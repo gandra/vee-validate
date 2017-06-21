@@ -3,7 +3,6 @@ import ErrorBag from './errorBag';
 import Dictionary from './dictionary';
 import messages from './messages';
 import { warn, isObject, isCallable, assign, getPath, toArray, createError } from './utils';
-import date from './plugins/date';
 
 let LOCALE = 'en';
 let STRICT_MODE = true;
@@ -26,10 +25,12 @@ export default class Validator {
     this.fastExit = options.fastExit || false;
     this.$vm = options.vm;
 
-    // if momentjs is present, install the validators.
-    if (typeof moment === 'function') {
-      // eslint-disable-next-line
-      this.installDateTimeValidators(moment);
+    // Some fields will be later evaluated, because the vm isn't mounted yet
+    // so it may register it under an inaccurate scope.
+    this.$deferred = [];
+    this.$ready = false;
+    if (options.init) {
+      this.init();
     }
   }
 
@@ -139,35 +140,6 @@ export default class Validator {
   static extend (name, validator) {
     Validator._guardExtend(name, validator);
     Validator._merge(name, validator);
-  }
-
-  /**
-   * Installs the datetime validators and the messages.
-   */
-  static installDateTimeValidators (moment) {
-    if (typeof moment !== 'function') {
-      warn('To use the date-time validators you must provide moment reference.');
-
-      return false;
-    }
-
-    if (date.installed) {
-      return true;
-    }
-
-    const validators = date.make(moment);
-    Object.keys(validators).forEach(name => {
-      Validator.extend(name, validators[name]);
-    });
-
-    Validator.updateDictionary({
-      en: {
-        messages: date.messages
-      }
-    });
-    date.installed = true;
-
-    return true;
   }
 
   /**
@@ -472,7 +444,7 @@ export default class Validator {
       throw createError(`No such validator '${rule.name}' exists.`);
     }
 
-    if (date.installed && this._isADateRule(rule.name)) {
+    if (this._isADateRule(rule.name)) {
       const dateFormat = this._getDateFormat(field.validations);
       rule.params = (Array.isArray(rule.params) ? toArray(rule.params) : []).concat([dateFormat]);
     }
@@ -729,13 +701,6 @@ export default class Validator {
    */
   getErrors () {
     return this.errorBag;
-  }
-
-  /**
-   * Just an alias to the static method for convienece.
-   */
-  installDateTimeValidators (moment) {
-    Validator.installDateTimeValidators(moment);
   }
 
   /**
